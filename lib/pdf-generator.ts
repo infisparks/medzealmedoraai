@@ -63,7 +63,7 @@ export async function generatePDFReport(data: PDFReportData): Promise<Blob> {
 
   // --- UPDATED ---
   // Start content yPosition *after* the header area of the letterhead PNG
-  let yPosition = 42
+  let yPosition = 72
 
   // --- REMAINDER OF CODE IS POSITIONED BASED ON THE NEW STARTING YPOS ---
 
