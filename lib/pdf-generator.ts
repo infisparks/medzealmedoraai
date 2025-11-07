@@ -1,5 +1,8 @@
 import jsPDF from "jspdf"
 import "jspdf-autotable"
+// These imports are now used to set the background
+import medzealletterhead from "@/public/medzeal.png"
+import medoraletterhead from "@/public/medora.png"
 
 export interface PDFReportData {
   fullName: string
@@ -17,24 +20,13 @@ export interface PDFReportData {
   analysisDate: string
 }
 
+// --- UPDATED ---
+// Simplified config, as contact details are now in the PNG
 const LETTERHEAD_CONFIG = {
   medzeal: {
-    companyName: "Medzeal",
-    phone: "+91 70441 78786",
-    email: "medzealpcw@gmail.com",
-    address: "near Bypass Y Junction",
-    website: "medzeal.in",
-    headerColor: "#1e3a8a",
     serviceTitle: "Facial Analysis Report",
   },
   medora: {
-    companyName: "MEDORA",
-    tagline: "From Care to Confidence, Redefining Dental Wellness",
-    phone: "+91 97690 00093",
-    email: "medora@gmail.com",
-    address: "near Bypass Y Junction",
-    website: "medora.org.in",
-    headerColor: "#1e3a8a",
     serviceTitle: "Dental Analysis Report",
   },
 }
@@ -44,28 +36,38 @@ export async function generatePDFReport(data: PDFReportData): Promise<Blob> {
   const doc = new jsPDF("p", "mm", "a4")
   const pageHeight = doc.internal.pageSize.getHeight() // 297mm
   const pageWidth = doc.internal.pageSize.getWidth() // 210mm
-  let yPosition = 0
 
-  // Header background (professional letterhead top)
-  doc.setFillColor(30, 58, 138) // #1e3a8a
-  doc.rect(0, 0, pageWidth, 35, "F")
+  // --- NEW ---
+  // Add the correct letterhead as a full-page background
+  const backgroundImage =
+    data.serviceType === "medzeal" ? medzealletterhead : medoraletterhead
 
-  // Company name and branding
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(22)
-  doc.setFont("helvetica", "bold")
-  doc.text(config.companyName, 15, 15)
+  // Convert StaticImageData to base64 string for jsPDF
+  const getBase64 = async (imgData: any): Promise<string> => {
+    if (typeof imgData === "string") return imgData
+    if ("src" in imgData && typeof imgData.src === "string") {
+      // NextJS StaticImageData case -- fetch and convert to dataURL
+      const res = await fetch(imgData.src)
+      const blob = await res.blob()
+      return await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.readAsDataURL(blob)
+      })
+    }
+    throw new Error("Unknown image format for PDF letterhead.")
+  }
 
-  // Contact details on right side of header
-  doc.setFontSize(8)
-  doc.setFont("helvetica", "normal")
-  doc.text(`Tel: ${config.phone}`, pageWidth - 50, 12)
-  doc.text(`Email: ${config.email}`, pageWidth - 50, 16)
-  doc.text(`${config.address}`, pageWidth - 50, 20)
-  doc.text(`Web: ${config.website}`, pageWidth - 50, 24)
+  const backgroundImageData = await getBase64(backgroundImage)
+  doc.addImage(backgroundImageData, "PNG", 0, 0, pageWidth, pageHeight)
+
+  // --- UPDATED ---
+  // Start content yPosition *after* the header area of the letterhead PNG
+  let yPosition = 42
+
+  // --- REMAINDER OF CODE IS POSITIONED BASED ON THE NEW STARTING YPOS ---
 
   // Report title section
-  yPosition = 42
   doc.setTextColor(30, 58, 138)
   doc.setFontSize(14)
   doc.setFont("helvetica", "bold")
@@ -103,7 +105,11 @@ export async function generatePDFReport(data: PDFReportData): Promise<Blob> {
 
   yPosition += 4
   doc.text(`Phone: ${data.phoneNumber}`, infoCol1X, yPosition)
-  doc.text(`Type: ${data.serviceType === "medzeal" ? "Facial" : "Dental"}`, infoCol2X, yPosition)
+  doc.text(
+    `Type: ${data.serviceType === "medzeal" ? "Facial" : "Dental"}`,
+    infoCol2X,
+    yPosition
+  )
 
   // Overall Assessment (compact)
   yPosition += 6
@@ -116,7 +122,10 @@ export async function generatePDFReport(data: PDFReportData): Promise<Blob> {
   doc.setTextColor(0, 0, 0)
   doc.setFontSize(8)
   doc.setFont("helvetica", "normal")
-  const assessmentLines = doc.splitTextToSize(data.overallAssessment, pageWidth - 30)
+  const assessmentLines = doc.splitTextToSize(
+    data.overallAssessment,
+    pageWidth - 30
+  )
   doc.text(assessmentLines, 15, yPosition)
   yPosition += assessmentLines.length * 3 + 2
 
@@ -132,7 +141,10 @@ export async function generatePDFReport(data: PDFReportData): Promise<Blob> {
     doc.setFontSize(8)
     doc.setFont("helvetica", "normal")
     data.keyProblemPoints.slice(0, 3).forEach((point, index) => {
-      const lines = doc.splitTextToSize(`${index + 1}. ${point}`, pageWidth - 25)
+      const lines = doc.splitTextToSize(
+        `${index + 1}. ${point}`,
+        pageWidth - 25
+      )
       doc.text(lines, 18, yPosition)
       yPosition += lines.length * 2.5 + 1
     })
@@ -156,30 +168,38 @@ export async function generatePDFReport(data: PDFReportData): Promise<Blob> {
       for (let i = 0; i < Math.min(data.images.length, 3); i++) {
         const xPos = 15 + i * (imageSize + imageSpacing)
 
-        doc.addImage(data.images[i], "JPEG", xPos, yPosition, imageSize, imageSize)
+        doc.addImage(
+          data.images[i],
+          "JPEG",
+          xPos,
+          yPosition,
+          imageSize,
+          imageSize
+        )
 
         doc.setTextColor(100, 100, 100)
         doc.setFontSize(7)
         doc.setFont("helvetica", "normal")
-        doc.text(`Image ${i + 1}`, xPos + imageSize / 2, yPosition + imageSize + 2, { align: "center" })
+        doc.text(`Image ${i + 1}`, xPos + imageSize / 2, yPosition + imageSize + 2, {
+          align: "center",
+        })
       }
     } catch (err) {
       console.error("[v0] Error adding image to PDF:", err)
     }
   }
 
-  // Footer with letterhead design
-  doc.setFillColor(30, 58, 138)
-  doc.rect(0, pageHeight - 8, pageWidth, 8, "F")
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(8)
-  doc.setFont("helvetica", "normal")
-  doc.text("InfiPlus", pageWidth / 2, pageHeight - 3, { align: "center" })
+  // --- REMOVED ---
+  // The manual footer drawing code was here. It is no longer needed
+  // as the InfiPlus logo is part of your letterhead PNG.
 
   return doc.output("blob")
 }
 
-export async function downloadPDF(data: PDFReportData, filename: string): Promise<void> {
+export async function downloadPDF(
+  data: PDFReportData,
+  filename: string
+): Promise<void> {
   const blob = await generatePDFReport(data)
   const url = URL.createObjectURL(blob)
   const link = document.createElement("a")
