@@ -33,11 +33,25 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user" },
         })
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          setIsLoading(false)
+        
+        const video = videoRef.current
+        if (video) {
+          video.srcObject = stream
+          
+          // 🌟 FIX: We must wait for the video metadata to load
+          // before we try to play it or set isLoading to false.
+          video.onloadedmetadata = () => {
+            video.play().catch(err => {
+              console.error("Video play failed:", err)
+              setError("Failed to play video. Please check permissions.")
+            });
+            
+            // Now that the video is *actually* ready, we can stop loading.
+            setIsLoading(false)
+          }
         }
       } catch (err) {
+        console.error("Camera access error:", err) // Log the full error
         setError("Unable to access camera. Please check permissions.")
         setIsLoading(false)
       }
@@ -51,7 +65,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         tracks.forEach((track) => track.stop())
       }
     }
-  }, [])
+  }, []) // Empty dependency array is correct here
 
   // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
@@ -62,14 +76,21 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     // This timer will capture a frame every 3 seconds for analysis
     const analysisInterval = setInterval(() => {
       if (!isAnalyzingFrame && videoRef.current && canvasRef.current) {
+        
+        // 🌟 FIX: Check for valid video dimensions
+        const videoWidth = videoRef.current.videoWidth
+        const videoHeight = videoRef.current.videoHeight
+        
+        if (videoWidth === 0 || videoHeight === 0) {
+          console.warn("Video frame is not ready, skipping analysis.")
+          return; // Don't try to analyze a 0x0 image
+        }
+        
         setIsAnalyzingFrame(true)
         
         // Capture a frame (same logic as capturePhoto but smaller)
         const context = canvasRef.current.getContext("2d")
         if (context) {
-          const videoWidth = videoRef.current.videoWidth
-          const videoHeight = videoRef.current.videoHeight
-          
           // Set canvas to smaller size for faster processing
           canvasRef.current.width = 480
           canvasRef.current.height = (videoHeight * 480) / videoWidth
@@ -111,6 +132,12 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
+      // 🌟 FIX: Check for valid video dimensions before capture
+      if (videoRef.current.videoWidth === 0) {
+        console.error("Cannot capture photo, video not ready.");
+        return;
+      }
+      
       const context = canvasRef.current.getContext("2d")
       if (context) {
         // Set full resolution for saved photo
@@ -214,7 +241,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 disabled={isLoading || error !== null}
                 className="w-20 h-20 rounded-full bg-accent hover:bg-accent/90 flex items-center justify-center shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <svg className="w-10 h-10 text-accent-foreground" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-10 h-10 text-accent-foreground" fill="currentColor" viewBox="0-0 24 24">
                   <circle cx="12" cy="12" r="8" />
                 </svg>
               </button>
