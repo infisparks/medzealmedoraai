@@ -6,11 +6,43 @@ import { Card } from "@/components/ui/card"
 import type { FormData } from "@/app/page"
 import { useSpeechSynthesis } from "react-speech-kit"
 import { analyzeLiveExpression } from "@/lib/gemini-api"
-import { Sparkles } from "lucide-react" // Make sure to install lucide-react (npm install lucide-react)
+import { Sparkles } from "lucide-react"
+
+// Import Rive
+import { useRive } from '@rive-app/react-canvas'
+
 
 interface ImageCaptureProps {
   formData: FormData & { patientId: string }
   onCapture: (images: string[], patientId: string) => void
+}
+
+// 🌟 NEW: The Rive Avatar Component
+const AiAvatar = ({ isSpeaking }: { isSpeaking: boolean }) => {
+  const { RiveComponent, rive } = useRive({
+    // 🌟 FIX 1: Load the .riv file from your /public folder
+    src: '/robot.riv', 
+    stateMachines: "State Machine 1", // This is usually the default name
+    artboard: "Robot", // Check your Rive file for this name
+    autoplay: true,
+  });
+
+  // 🌟 FIX 2: Use "isTalking" to match your file's input
+  const isTalkingInput = rive?.findInput('isTalking');
+
+  // This effect links your React 'speaking' state to the Rive animation
+  useEffect(() => {
+    if (isTalkingInput) {
+      isTalkingInput.value = isSpeaking;
+    }
+  }, [isSpeaking, isTalkingInput]);
+
+  return (
+    // You can adjust the size and position here
+    <div className="absolute top-2 right-2 z-20 w-28 h-28">
+      <RiveComponent />
+    </div>
+  );
 }
 
 export default function ImageCapture({ formData, onCapture }: ImageCaptureProps) {
@@ -25,10 +57,9 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   // --- LIVE FEEDBACK STATE ---
   const [liveFeedbackText, setLiveFeedbackText] = useState<string>("")
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false)
-  
-  // State to track used dialogues
   const [usedDialogues, setUsedDialogues] = useState<string[]>([]);
 
+  // This 'speaking' boolean will control the Rive animation
   const { speak, speaking, voices } = useSpeechSynthesis()
   
   const hindiVoice = voices.find((v: any) => v.lang.startsWith("hi-"))
@@ -73,7 +104,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voices]) // Run when voices array is populated
+  }, [voices])
 
   // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
@@ -101,20 +132,18 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height)
           const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5) 
 
-          // Pass the 'usedDialogues' list to the API
           analyzeLiveExpression(photoData, formData.fullName, formData.serviceType, usedDialogues)
             .then(result => {
-              // Check if the dialogue is empty or already used (as a fallback)
               if (result.expressionText && !usedDialogues.includes(result.expressionText)) {
                 
                 setLiveFeedbackText(result.expressionText);
-                setUsedDialogues(prev => [...prev, result.expressionText]); // Add to used list
+                setUsedDialogues(prev => [...prev, result.expressionText]); 
 
                 speak({ 
                   text: result.expressionText, 
                   voice: hindiVoice || undefined,
-                  rate: 0.9, // More natural rate
-                  pitch: 1.0 // More natural pitch
+                  rate: 0.9,
+                  pitch: 1.0
                 });
               } else if (result.expressionText) {
                 console.warn("AI repeated a dialogue, ignoring:", result.expressionText);
@@ -153,7 +182,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     const introText = `Hi ${formData.fullName}! I'm InfiSpark, your AI assistant. Let's start your ${formData.serviceType === "medzeal" ? "facial" : "dental"} scan! Please look at the camera.`
     
     setLiveFeedbackText(introText);
-    setUsedDialogues([introText]); // Add intro text to the used list
+    setUsedDialogues([introText]); 
 
     speak({ 
       text: introText, 
@@ -218,7 +247,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           {/* Video/Loading State */}
           <div className="relative bg-background rounded-lg overflow-hidden aspect-video">
             {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background">
+               <div className="absolute inset-0 flex items-center justify-center bg-background">
                 <div className="text-center space-y-4">
                   <div className="inline-block">
                     <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin" />
@@ -228,8 +257,15 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               </div>
             )}
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            
             {!error && !isLoading && (
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
+            )}
+
+            {/* YOUR NEW RIVE AVATAR IS HERE */}
+            {/* It will automatically show/hide with the 'hasStarted' state */}
+            {!isLoading && !error && hasStarted && (
+              <AiAvatar isSpeaking={speaking} />
             )}
             
             {/* "Start" button overlay */}
@@ -248,7 +284,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             )}
           </div>
 
-          {/* LIVE FEEDBACK AREA (Moved Below Camera) */}
+          {/* LIVE FEEDBACK AREA (Below Camera) */}
           <div className="h-16 flex items-center justify-center px-4">
             {!isLoading && !error && hasStarted && (
               <div
@@ -275,7 +311,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
           {/* Instructions */}
           <div className="text-center">
-            <p className="text-foreground font-medium mb-2">
+             <p className="text-foreground font-medium mb-2">
               Please position your {formData.serviceType === "medzeal" ? "face" : "teeth"} in the frame.
             </p>
             <p className="text-muted-foreground text-sm">We will capture 3 photos</p>
