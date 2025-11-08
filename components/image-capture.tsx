@@ -4,6 +4,8 @@ import { useRef, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import type { FormData } from "@/app/page"
+import { useSpeechSynthesis } from "react-speech-kit" // 🌟 NEW IMPORT
+import { analyzeLiveExpression } from "@/lib/gemini-api" // 🌟 NEW IMPORT
 
 interface ImageCaptureProps {
   formData: FormData & { patientId: string }
@@ -16,6 +18,14 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // --- 🌟 NEW LIVE FEEDBACK STATE ---
+  const [liveFeedbackText, setLiveFeedbackText] = useState<string>("")
+  const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false)
+  const { speak, speaking, voices } = useSpeechSynthesis()
+  
+  // Find a Hindi voice if available
+  const hindiVoice = voices.find((v: any) => v.lang.startsWith("hi-"))
 
   useEffect(() => {
     const startCamera = async () => {
@@ -43,14 +53,73 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     }
   }, [])
 
+  // --- 🌟 NEW EFFECT FOR LIVE ANALYSIS ---
+  useEffect(() => {
+    if (isLoading || error || capturedPhotos.length === 3) {
+      return // Don't run analysis if camera isn't ready or if capture is done
+    }
+
+    // This timer will capture a frame every 3 seconds for analysis
+    const analysisInterval = setInterval(() => {
+      if (!isAnalyzingFrame && videoRef.current && canvasRef.current) {
+        setIsAnalyzingFrame(true)
+        
+        // Capture a frame (same logic as capturePhoto but smaller)
+        const context = canvasRef.current.getContext("2d")
+        if (context) {
+          const videoWidth = videoRef.current.videoWidth
+          const videoHeight = videoRef.current.videoHeight
+          
+          // Set canvas to smaller size for faster processing
+          canvasRef.current.width = 480
+          canvasRef.current.height = (videoHeight * 480) / videoWidth
+          
+          context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height)
+          
+          // Get low-quality JPEG for speed
+          const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5) 
+
+          // Send for analysis in the background
+          analyzeLiveExpression(photoData)
+            .then(result => {
+              if (result.expressionText && result.expressionText !== liveFeedbackText) {
+                setLiveFeedbackText(result.expressionText)
+                // Speak the text
+                speak({ 
+                  text: result.expressionText, 
+                  voice: hindiVoice || undefined 
+                })
+              }
+            })
+            .catch(err => {
+              console.warn("Frame analysis failed:", err)
+              // Don't show an error, just fail silently
+            })
+            .finally(() => {
+              setIsAnalyzingFrame(false)
+            })
+        } else {
+          setIsAnalyzingFrame(false)
+        }
+      }
+    }, 3000) // Analyze every 3 seconds
+
+    return () => clearInterval(analysisInterval) // Cleanup on unmount
+
+  }, [isLoading, error, capturedPhotos.length, isAnalyzingFrame, speak, hindiVoice, liveFeedbackText])
+
+
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const context = canvasRef.current.getContext("2d")
       if (context) {
+        // Set full resolution for saved photo
         canvasRef.current.width = videoRef.current.videoWidth
         canvasRef.current.height = videoRef.current.videoHeight
         context.drawImage(videoRef.current, 0, 0)
-        const photoData = canvasRef.current.toDataURL("image/jpeg")
+        
+        // Get high-quality JPEG for analysis
+        const photoData = canvasRef.current.toDataURL("image/jpeg", 0.9)
         setCapturedPhotos([...capturedPhotos, photoData])
 
         // Flash animation
@@ -95,10 +164,38 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 </div>
               </div>
             )}
-            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             {!error && !isLoading && (
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
             )}
+            
+            {/* --- 🌟 NEW LIVE FEEDBACK OVERLAY 🌟 --- */}
+            {!isLoading && !error && !isAllCaptured && (
+              <div className="absolute bottom-4 left-4 right-4 flex justify-center pointer-events-none">
+                <div
+                  className={`transition-all duration-300 bg-black/70 text-white px-4 py-2 rounded-full shadow-lg ${
+                    liveFeedbackText && !speaking ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+                  } ${
+                    speaking && "opacity-100 translate-y-0" // Stay visible while speaking
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    {/* Speaking Effect */}
+                    {speaking && (
+                      <div className="flex gap-0.5 items-end h-4 w-4">
+                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0s" }}></span>
+                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0.2s" }}></span>
+                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0.4s" }}></span>
+                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0.6s" }}></span>
+                      </div>
+                    )}
+                    <span className="text-sm font-medium">{liveFeedbackText}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* --- END OF NEW OVERLAY --- */}
+
           </div>
 
           {/* Instructions */}
@@ -133,7 +230,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               >
                 {capturedPhotos[index - 1] ? (
                   <img
-                    src={capturedPhotos[index - 1] || "/placeholder.svg"}
+                    src={capturedPhotos[index - 1]}
                     alt={`Photo ${index}`}
                     className="w-full h-full object-cover"
                   />
@@ -168,3 +265,8 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     </div>
   )
 }
+
+
+
+
+
