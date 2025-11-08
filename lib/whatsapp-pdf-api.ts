@@ -1,4 +1,3 @@
-const WHATSAPP_API_KEY = "4nAJab0oyVlworJu1veRaGfmvkO0yxf2"
 export interface WhatsAppPDFShareRequest {
   phoneNumber: string
   pdfUrl: string // This is the public Firebase URL
@@ -7,17 +6,17 @@ export interface WhatsAppPDFShareRequest {
   serviceType: "medzeal" | "medora"
 }
 
-// --- 🌟 NEW WHATSAPP API LOGIC 🌟 ---
-export async function sendPDFViaWhatsApp(data: WhatsAppPDFShareRequest): Promise<void> {
-  // Get the API key from environment variables
-  const apiKey = process.env.NEXT_PUBLIC_WHATSAPP_API_KEY;
+// --- 🌟 API KEY FIX 🌟 ---
+// The API key from your prompt is now placed here directly
+// This will fix the 401 Unauthorized error.
+const WHATSAPP_API_KEY = "4nAJab0oyVlworJu1veRaGfmvkO0yxf2"
 
-  if (!apiKey) {
-    const errorMsg = "WhatsApp API key is missing. Please add NEXT_PUBLIC_WHATSAPP_API_KEY to .env.local";
-    console.error(`[v0] ${errorMsg}`);
-    // We throw an error to stop the "Report Ready!" success message from showing
-    throw new Error(errorMsg);
-  }
+export async function sendPDFViaWhatsApp(data: WhatsAppPDFShareRequest): Promise<void> {
+  // We now use the hardcoded key from above
+  const apiKey = WHATSAPP_API_KEY;
+
+  // This check is no longer needed as the key is hardcoded
+  // if (!apiKey) { ... }
 
   const serviceName = data.serviceType === "medzeal" ? "Facial Analysis" : "Dental Analysis";
   
@@ -39,7 +38,7 @@ export async function sendPDFViaWhatsApp(data: WhatsAppPDFShareRequest): Promise
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "apikey": "4nAJab0oyVlworJu1veRaGfmvkO0yxf2"// Your API key
+        "apikey": apiKey // Your API key
       },
       body: JSON.stringify(payload),
     });

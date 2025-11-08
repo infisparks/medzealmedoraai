@@ -39,7 +39,7 @@ export async function sendPDFViaWhatsApp(data: WhatsAppPDFShareRequest): Promise
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "apikey": "4nAJab0oyVlworJu1veRaGfmvkO0yxf2"// Your API key
+        "apikey": apiKey// Your API key
       },
       body: JSON.stringify(payload),
     });
