@@ -6,7 +6,11 @@ import { Card } from "@/components/ui/card"
 import type { FormData } from "@/app/page"
 import { analyzeFacialImages, analyzeDentalImages } from "@/lib/gemini-api"
 import { saveAnalysisReport, uploadImagesToFirebase } from "@/lib/firebase-utils"
-import PDFReportViewer from "./pdf-report-viewer"
+// --- 🌟 NEW IMPORTS (Moved from pdf-report-viewer) ---
+import { generatePDFReport, type PDFReportData } from "@/lib/pdf-generator"
+import { uploadPDFToFirebase } from "@/lib/firebase-pdf-upload"
+import { sendPDFViaWhatsApp } from "@/lib/whatsapp-pdf-api"
+import { useToast } from "@/components/ui/use-toast" // For toast notifications
 
 interface AnalysisReportProps {
   formData: FormData & { patientId: string }
@@ -14,7 +18,6 @@ interface AnalysisReportProps {
   onBack: () => void
 }
 
-// This interface includes the 'skinClarityScore' from my previous fix
 interface AnalysisResult {
   score?: number
   skinClarityScore?: number
@@ -33,7 +36,10 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
   const [activeTab, setActiveTab] = useState<"findings" | "treatment">("findings")
   const [analysisData, setAnalysisData] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showPDFViewer, setShowPDFViewer] = useState(false)
+  
+  // --- 🌟 NEW STATES (Moved from pdf-report-viewer) ---
+  const [isSending, setIsSending] = useState(false) // For the send button
+  const { toast } = useToast()
 
   useEffect(() => {
     const performAnalysis = async () => {
@@ -42,16 +48,13 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         if (formData.serviceType === "medzeal") {
           result = await analyzeFacialImages(images)
         } else if (formData.serviceType === "medora") {
-          // This is the "medora" path
           result = await analyzeDentalImages(images)
         } else {
-          // This case should not happen if form validation is correct
           throw new Error("Invalid service type")
         }
 
         setAnalysisData(result)
 
-        // Upload images to Firebase and save report
         const imageUrls = await uploadImagesToFirebase(formData.patientId, images)
         await saveAnalysisReport(formData.patientId, {
           ...result,
@@ -61,14 +64,13 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
 
         console.log("[v0] Analysis completed and saved")
         setIsLoading(false)
-      } catch (err) {
+      } catch (err: any) { 
         console.error("[v0] Analysis error:", err)
-        setError("Failed to analyze images. Please try again.")
+        setError(err.message || "Failed to analyze images. Please try again.")
         setIsLoading(false)
       }
     }
 
-    // We also check for serviceType here before running
     if (formData.serviceType) {
       performAnalysis()
     } else {
@@ -77,14 +79,50 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
     }
   }, [formData, images])
 
-  const handleWhatsAppShare = () => {
-    setShowPDFViewer(true)
+
+  // --- 🌟 NEW WHATSAPP LOGIC (Moved from pdf-report-viewer) ---
+  const handleWhatsAppShare = async (pdfReportData: PDFReportData) => {
+    setIsSending(true)
+
+    try {
+      console.log("[v0] Generating PDF...");
+      const pdfBlob = await generatePDFReport(pdfReportData)
+
+      console.log("[v0] Uploading PDF to Firebase...");
+      const timestamp = new Date().toISOString().slice(0, 10)
+      const filename = `${pdfReportData.fullName}_${pdfReportData.serviceType}_${timestamp}.pdf`
+      const uploadedUrl = await uploadPDFToFirebase(formData.patientId, pdfBlob, filename)
+
+      console.log("[v0] PDF uploaded:", uploadedUrl)
+      console.log("[v0] Sending via WhatsApp API...");
+
+      await sendPDFViaWhatsApp({
+        phoneNumber: pdfReportData.phoneNumber,
+        pdfUrl: uploadedUrl,
+        patientName: pdfReportData.fullName,
+        score: pdfReportData.score,
+        serviceType: pdfReportData.serviceType,
+      })
+
+      console.log("[v0] WhatsApp send initiated.")
+      toast({
+        title: "✅ Report Sent!",
+        description: "The PDF report has been successfully sent via WhatsApp.",
+      })
+
+    } catch (error: any) {
+      console.error("[v0] Error sending report:", error)
+      toast({
+        variant: "destructive",
+        title: "❌ Send Failed",
+        description: error.message || "Could not send the report. Please try again.",
+      })
+    } finally {
+      setIsSending(false)
+    }
   }
 
-  const handleDownloadPDF = () => {
-    setShowPDFViewer(true)
-  }
-
+  // ... (Loading and Error states are the same) ...
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -105,7 +143,8 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         <Card className="w-full max-w-md bg-card border border-border rounded-xl p-6">
           <div className="text-center space-y-4">
             <div className="text-4xl">⚠️</div>
-            <h2 className="text-xl font-bold text-foreground">{error}</h2>
+            <h2 className="text-xl font-bold text-foreground">Analysis Failed</h2>
+            <p className="text-sm text-muted-foreground">{error}</p>
             <Button
               onClick={onBack}
               className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-lg"
@@ -118,10 +157,6 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
     )
   }
 
-  // **START OF FIX**
-  // This type guard proves to TypeScript that analysisData and
-  // formData.serviceType are not null for the rest of the component.
-  // This fixes the 'serviceType' error (Error 2).
   if (!analysisData || !formData.serviceType) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -141,17 +176,16 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
       </div>
     )
   }
-  // **END OF FIX**
 
-  // From this point on, TypeScript knows formData.serviceType is "medzeal" or "medora", not null.
   const scoreKey = formData.serviceType === "medzeal" ? "skinClarityScore" : "oralHygieneScore"
-  const score = analysisData[scoreKey as keyof AnalysisResult] || analysisData.score || 85
+  const scoreValue = analysisData[scoreKey as keyof AnalysisResult] || analysisData.score || 85
 
-  const pdfReportData = {
+  // This data object is now created once and used by the send function
+  const pdfReportData: PDFReportData = {
     fullName: formData.fullName,
     phoneNumber: formData.phoneNumber,
-    serviceType: formData.serviceType, // This is now safe and correct
-    score: typeof score === "number" ? score : 85,
+    serviceType: formData.serviceType, 
+    score: typeof scoreValue === "number" ? scoreValue : 85,
     overallAssessment: analysisData.overallAssessment,
     keyProblemPoints: analysisData.keyProblemPoints,
     detectedProblems: analysisData.detectedProblems,
@@ -167,6 +201,7 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
     <>
       <div className="min-h-screen p-4 bg-background">
         <div className="max-w-4xl mx-auto space-y-6">
+          {/* ... (Header, Patient Details, Tabs, Content all remain the same) ... */}
           {/* Header */}
           <div className="text-center space-y-2 mb-8">
             <h1 className="text-4xl font-bold text-foreground">Your Analysis Report</h1>
@@ -193,7 +228,7 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
               <div>
                 <p className="text-muted-foreground text-sm mb-1">Score</p>
                 <p className="text-foreground font-semibold text-lg">
-                  {typeof score === "number" ? score : 85}/100
+                  {typeof scoreValue === "number" ? scoreValue : 85}/100
                 </p>
               </div>
             </div>
@@ -286,19 +321,14 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
             </Card>
           )}
 
-          {/* Action Buttons */}
+          {/* --- 🌟 UPDATED ACTION BUTTON 🌟 --- */}
           <div className="flex flex-col gap-3 sm:flex-row justify-center">
             <Button
-              onClick={handleWhatsAppShare}
-              className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-lg transition-all"
+              onClick={() => handleWhatsAppShare(pdfReportData)} // Pass the data
+              disabled={isSending} // Disable button while sending
+              className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-lg transition-all"
             >
-              📤 Send Report to WhatsApp
-            </Button>
-            <Button
-              onClick={handleDownloadPDF}
-              className="flex-1 bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold py-3 rounded-lg border border-border transition-all"
-            >
-              ⬇️ Download PDF Report
+              {isSending ? "Sending Report..." : "📤 Send Report to WhatsApp"}
             </Button>
           </div>
 
@@ -311,14 +341,8 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         </div>
       </div>
 
-      {/* PDF viewer modal with professional animations */}
-      {showPDFViewer && (
-        <PDFReportViewer
-          reportData={pdfReportData}
-          patientId={formData.patientId}
-          onClose={() => setShowPDFViewer(false)}
-        />
-      )}
+      {/* --- 🌟 PDF VIEWER REMOVED 🌟 --- */}
+      {/* The modal is no longer needed */}
     </>
   )
-}
+}     
