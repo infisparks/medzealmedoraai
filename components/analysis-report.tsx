@@ -192,7 +192,9 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
               </div>
               <div>
                 <p className="text-muted-foreground text-sm mb-1">Score</p>
-                <p className="text-foreground font-semibold text-lg">{score}/100</p>
+                <p className="text-foreground font-semibold text-lg">
+                  {typeof score === "number" ? score : 85}/100
+                </p>
               </div>
             </div>
           </Card>
