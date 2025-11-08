@@ -14,8 +14,10 @@ interface AnalysisReportProps {
   onBack: () => void
 }
 
+// FIX: Added 'skinClarityScore' to the interface to match your score logic
 interface AnalysisResult {
   score?: number
+  skinClarityScore?: number
   oralHygieneScore?: number
   overallAssessment: string
   keyProblemPoints: string[]
@@ -40,6 +42,8 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         if (formData.serviceType === "medzeal") {
           result = await analyzeFacialImages(images)
         } else {
+          // This is where the error for "medora" is happening.
+          // The analyzeDentalImages function itself is failing.
           result = await analyzeDentalImages(images)
         }
 
@@ -56,6 +60,7 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         console.log("[v0] Analysis completed and saved")
         setIsLoading(false)
       } catch (err) {
+        // This catch block is being triggered by analyzeDentalImages(images)
         console.error("[v0] Analysis error:", err)
         setError("Failed to analyze images. Please try again.")
         setIsLoading(false)
@@ -110,6 +115,7 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
     return null
   }
 
+  // This logic is now correct because of the interface fix above
   const scoreKey = formData.serviceType === "medzeal" ? "skinClarityScore" : "oralHygieneScore"
   const score = analysisData[scoreKey as keyof AnalysisResult] || analysisData.score || 85
 

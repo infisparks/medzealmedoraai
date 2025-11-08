@@ -209,4 +209,4 @@ export async function downloadPDF(
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
-}
+}  
