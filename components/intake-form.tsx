@@ -45,8 +45,11 @@ export default function IntakeForm({ onSubmit }: IntakeFormProps) {
       setIsSubmitting(true)
       setError(null)
       try {
+        const { serviceType, ...restFormData } = formData
+        if (!serviceType) throw new Error("Service type is required");
         const patientId = await savePatientData({
-          ...formData,
+          ...restFormData,
+          serviceType,
           timestamp: new Date().getTime(),
         })
         onSubmit({ ...formData, patientId })

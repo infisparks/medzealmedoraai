@@ -183,7 +183,7 @@ Provide the following JSON response:
 // --- 🌟 NEW FUNCTION FOR LIVE EXPRESSION ANALYSIS 🌟 ---
 export async function analyzeLiveExpression(image: string): Promise<LiveExpressionResult> {
   // Check if API key is available
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === "AIzaSyC7EMJ9OU8CFSLW8dHEAagZPxxvylUFF9M") {
+  if (!GEMINI_API_KEY) {
     console.error("Gemini API key is missing or is set to the placeholder.");
     return { expressionText: "" };
   }
