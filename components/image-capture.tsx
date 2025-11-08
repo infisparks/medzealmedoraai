@@ -19,27 +19,27 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] =useState(false)
-
-  // State to track if user has "started" the session
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
 
   // --- LIVE FEEDBACK STATE ---
   const [liveFeedbackText, setLiveFeedbackText] = useState<string>("")
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false)
+  
+  // State to track used dialogues
+  const [usedDialogues, setUsedDialogues] = useState<string[]>([]);
+
   const { speak, speaking, voices } = useSpeechSynthesis()
   
-  // Find a Hindi voice if available
   const hindiVoice = voices.find((v: any) => v.lang.startsWith("hi-"))
 
   // Effect to start the camera
   useEffect(() => {
-    // Check for API key (good for debugging)
     if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
       console.error("FATAL: NEXT_PUBLIC_GEMINI_API_KEY is missing from .env.local");
       setError("AI configuration is missing. Please contact support.");
     }
-    
+
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -49,13 +49,12 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         const video = videoRef.current
         if (video) {
           video.srcObject = stream
-          // Wait for metadata to load before playing
           video.onloadedmetadata = () => {
             video.play().catch(err => {
               console.error("Video play failed:", err)
               setError("Failed to play video. Please check permissions.")
             });
-            setIsLoading(false) // Set loading to false only when video is ready
+            setIsLoading(false)
           }
         }
       } catch (err) {
@@ -68,17 +67,16 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     startCamera()
 
     return () => {
-      // Cleanup: Stop video tracks on unmount
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
         tracks.forEach((track) => track.stop())
       }
     }
-  }, []) // Empty dependency array ensures this runs once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voices]) // Run when voices array is populated
 
   // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
-    // Do not run the loop if camera isn't ready OR if user hasn't clicked "Start"
     if (isLoading || error || !hasStarted) {
       return
     }
@@ -103,15 +101,23 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height)
           const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5) 
 
-          // 🌟 UPDATED: Pass fullName and serviceType to the API function
-          analyzeLiveExpression(photoData, formData.fullName, formData.serviceType)
+          // Pass the 'usedDialogues' list to the API
+          analyzeLiveExpression(photoData, formData.fullName, formData.serviceType, usedDialogues)
             .then(result => {
-              if (result.expressionText && result.expressionText !== liveFeedbackText) {
-                setLiveFeedbackText(result.expressionText)
+              // Check if the dialogue is empty or already used (as a fallback)
+              if (result.expressionText && !usedDialogues.includes(result.expressionText)) {
+                
+                setLiveFeedbackText(result.expressionText);
+                setUsedDialogues(prev => [...prev, result.expressionText]); // Add to used list
+
                 speak({ 
                   text: result.expressionText, 
-                  voice: hindiVoice || undefined 
-                })
+                  voice: hindiVoice || undefined,
+                  rate: 0.9, // More natural rate
+                  pitch: 1.0 // More natural pitch
+                });
+              } else if (result.expressionText) {
+                console.warn("AI repeated a dialogue, ignoring:", result.expressionText);
               }
             })
             .catch(err => {
@@ -124,9 +130,9 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           setIsAnalyzingFrame(false)
         }
       }
-    }, 3000) // Analyze every 3 seconds
+    }, 3000)
 
-    return () => clearInterval(analysisInterval) // Cleanup on unmount
+    return () => clearInterval(analysisInterval)
 
   }, [
     isLoading, 
@@ -135,21 +141,26 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     isAnalyzingFrame, 
     isSubmitting, 
     speak, 
-    hindiVoice, 
-    liveFeedbackText,
-    formData // 🌟 UPDATED: Add formData to dependency array
+    hindiVoice,
+    formData,
+    usedDialogues
   ])
 
-  // 🌟 UPDATED: Function to handle the "Start" click
+  // Function to handle the "Start" click
   const handleStartSession = () => {
     setHasStarted(true)
     
-    // Create the personalized introduction text
     const introText = `Hi ${formData.fullName}! I'm InfiSpark, your AI assistant. Let's start your ${formData.serviceType === "medzeal" ? "facial" : "dental"} scan! Please look at the camera.`
     
-    // Set the text and speak it
-    setLiveFeedbackText(introText)
-    speak({ text: introText, voice: hindiVoice || undefined })
+    setLiveFeedbackText(introText);
+    setUsedDialogues([introText]); // Add intro text to the used list
+
+    speak({ 
+      text: introText, 
+      voice: hindiVoice || undefined,
+      rate: 0.9,
+      pitch: 1.0
+    });
   }
 
   const capturePhoto = () => {
@@ -164,6 +175,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         canvasRef.current.width = videoRef.current.videoWidth
         canvasRef.current.height = videoRef.current.videoHeight
         context.drawImage(videoRef.current, 0, 0)
+        
         const photoData = canvasRef.current.toDataURL("image/jpeg", 0.9)
         setCapturedPhotos([...capturedPhotos, photoData])
 
@@ -216,12 +228,11 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               </div>
             )}
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            
             {!error && !isLoading && (
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
             )}
             
-            {/* Show the "Start" button overlay */}
+            {/* "Start" button overlay */}
             {!hasStarted && !isLoading && !error && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
                 <p className="text-lg font-medium text-white mb-6">Ready for your analysis?</p>
@@ -235,34 +246,32 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 </Button>
               </div>
             )}
-            
-            {/* --- LIVE FEEDBACK OVERLAY --- */}
-            {/* This will only appear *after* 'hasStarted' is true */}
+          </div>
+
+          {/* LIVE FEEDBACK AREA (Moved Below Camera) */}
+          <div className="h-16 flex items-center justify-center px-4">
             {!isLoading && !error && hasStarted && (
-              <div className="absolute bottom-4 left-4 right-4 flex justify-center pointer-events-none">
-                <div
-                  className={`transition-all duration-300 bg-black/70 text-white px-4 py-2 rounded-full shadow-lg ${
-                    liveFeedbackText && !speaking ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-                  } ${
-                    speaking && "opacity-100 translate-y-0" // Stay visible while speaking
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    {/* Speaking Effect */}
-                    {speaking && (
-                      <div className="flex gap-0.5 items-end h-4 w-4">
-                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0s" }}></span>
-                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0.2s" }}></span>
-                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0.4s" }}></span>
-                        <span className="w-1 bg-white animate-speak-bar" style={{ animationDelay: "0.6s" }}></span>
-                      </div>
-                    )}
-                    <span className="text-sm font-medium">{liveFeedbackText}</span>
+              <div
+                className={`transition-all duration-300 flex items-center justify-center gap-2.5 bg-background/50 text-foreground px-4 py-2 rounded-full ${
+                  liveFeedbackText ? "opacity-100" : "opacity-0"
+                } ${
+                  speaking && "opacity-100" // Stay visible while speaking
+                }`}
+              >
+                {/* Speaking Effect */}
+                {speaking && (
+                  <div className="flex gap-0.5 items-end h-5 w-5 flex-shrink-0">
+                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0s" }}></span>
+                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.2s" }}></span>
+                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.4s" }}></span>
+                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.6s" }}></span>
                   </div>
-                </div>
+                )}
+                <span className="text-sm font-medium text-center">{liveFeedbackText}</span>
               </div>
             )}
           </div>
+          {/* --- END OF LIVE FEEDBACK AREA --- */}
 
           {/* Instructions */}
           <div className="text-center">
@@ -273,7 +282,6 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           </div>
 
           {/* Capture Button */}
-          {/* Hide this button until the session has started */}
           {!isAllCaptured && !isSubmitting && hasStarted && (
             <div className="flex justify-center">
               <button
