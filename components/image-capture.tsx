@@ -19,9 +19,9 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitting, setIsSubmitting] =useState(false)
 
-  // 🌟 FIX 1: Add state to track if user has "started" the session
+  // State to track if user has "started" the session
   const [hasStarted, setHasStarted] = useState(false)
 
   // --- LIVE FEEDBACK STATE ---
@@ -78,7 +78,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
   // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
-    // 🌟 FIX 2: Do not run the loop if camera isn't ready OR if user hasn't clicked "Start"
+    // Do not run the loop if camera isn't ready OR if user hasn't clicked "Start"
     if (isLoading || error || !hasStarted) {
       return
     }
@@ -103,7 +103,8 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height)
           const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5) 
 
-          analyzeLiveExpression(photoData)
+          // 🌟 UPDATED: Pass fullName and serviceType to the API function
+          analyzeLiveExpression(photoData, formData.fullName, formData.serviceType)
             .then(result => {
               if (result.expressionText && result.expressionText !== liveFeedbackText) {
                 setLiveFeedbackText(result.expressionText)
@@ -127,15 +128,28 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
     return () => clearInterval(analysisInterval) // Cleanup on unmount
 
-  }, [isLoading, error, hasStarted, isAnalyzingFrame, isSubmitting, speak, hindiVoice, liveFeedbackText]) // Added 'hasStarted'
+  }, [
+    isLoading, 
+    error, 
+    hasStarted, 
+    isAnalyzingFrame, 
+    isSubmitting, 
+    speak, 
+    hindiVoice, 
+    liveFeedbackText,
+    formData // 🌟 UPDATED: Add formData to dependency array
+  ])
 
-  // 🌟 FIX 3: Function to handle the "Start" click
+  // 🌟 UPDATED: Function to handle the "Start" click
   const handleStartSession = () => {
     setHasStarted(true)
-    // This "primes" the audio by speaking a silent space
-    // This gets the browser's permission to make sound
-    speak({ text: " ", voice: hindiVoice || undefined })
-    setLiveFeedbackText("Thoda smile kijiye!") // Give an initial instruction
+    
+    // Create the personalized introduction text
+    const introText = `Hi ${formData.fullName}! I'm InfiSpark, your AI assistant. Let's start your ${formData.serviceType === "medzeal" ? "facial" : "dental"} scan! Please look at the camera.`
+    
+    // Set the text and speak it
+    setLiveFeedbackText(introText)
+    speak({ text: introText, voice: hindiVoice || undefined })
   }
 
   const capturePhoto = () => {
@@ -207,7 +221,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
             )}
             
-            {/* 🌟 FIX 4: Show the "Start" button overlay */}
+            {/* Show the "Start" button overlay */}
             {!hasStarted && !isLoading && !error && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
                 <p className="text-lg font-medium text-white mb-6">Ready for your analysis?</p>
@@ -259,7 +273,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           </div>
 
           {/* Capture Button */}
-          {/* 🌟 FIX 5: Hide this button until the session has started */}
+          {/* Hide this button until the session has started */}
           {!isAllCaptured && !isSubmitting && hasStarted && (
             <div className="flex justify-center">
               <button
@@ -290,7 +304,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 ) : (
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm">Photo {index}/3</p>
-Setting up...                  </div>
+                  </div>
                 )}
               </div>
             ))}

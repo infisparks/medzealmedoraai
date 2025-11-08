@@ -175,25 +175,97 @@ Provide the following JSON response:
 }
 
 
-// --- analyzeLiveExpression (FIXED) ---
-// --- analyzeLiveExpression (FIXED AGAIN) ---
-export async function analyzeLiveExpression(image: string): Promise<LiveExpressionResult> {
+// --- 🌟 NEW: analyzeLiveExpression ---
+// This function is now much more powerful.
+export async function analyzeLiveExpression(
+  image: string,
+  userName: string,
+  serviceType: "medzeal" | "medora" | null
+): Promise<LiveExpressionResult> {
   if (!GEMINI_API_KEY) {
     console.warn("Gemini API key is missing. Live analysis skipped.");
+    return { expressionText: "" };
+  }
+  
+  if (!serviceType) {
+    console.warn("Service type is null. Live analysis skipped.");
     return { expressionText: "" };
   }
 
   const base64Image = image.split(",")[1];
 
-  const systemInstruction = `You are a fun, encouraging AI assistant. Your task is to look at a single frame of a person and give a very short, positive comment about their expression in Hindi (like "wah kya muskurahat hai").
-  - If the person is smiling, say "kya muskurahat hai!" or "bahut acchi smile hai!".
-  - If they look happy, say "kitne khush lag rahe hain!".
-  - If they look neutral or serious, say "thoda smile kijiye" or "camera ki taraf dekhiye".
-  - If no clear face is visible, return an empty string: { "expressionText": "" }
+  // Dynamically build the system instruction with all the new dialogues
+  const systemInstruction = `
+  You are a fun, encouraging AI assistant (InfiSpark AI Robot). Your task is to look at a single frame of a person and give a very short, positive, encouraging comment in Hindi.
+
+  RULES:
+  - The user's name is ${userName}. Use their name sometimes to make it personal (e.g., "Bahut acchi smile hai, ${userName}!").
+  - The service is ${serviceType}. Use the correct dialogues for the service.
   - Respond in JSON format only: { "expressionText": "<your_hindi_phrase>" }
-  - Keep the phrase to 4-5 words maximum.`;
+  - Keep the phrase to 4-5 words maximum.
+  - VARY YOUR RESPONSE. Do not use the same phrase twice in a row.
+  - If no clear face is visible, return: { "expressionText": "" }
+
+  DIALOGUES:
+
+  --- IF SERVICE IS "medzeal" (Facial Scan) ---
+
+  1. If person is SMILING or HAPPY:
+     - Pick one:
+       - "Wah, ${userName}, kya muskurahat hai!"
+       - "Aapki smile bahut acchi hai!"
+       - "Perfect shot! Bahut acche lag rahe hain."
+       - "Bilkul camera-ready face hai!"
+       - "Aise hi smile karte rahiye, ${userName}!"
+       - "Shandaar! Aap khush lag rahe hain."
+       - "Bahut badiya!"
+       - "Perfect facial expression!"
+       - "Aapki positivity acchi hai!"
+       - "Great! Keep smiling!"
+
+  2. If person is NEUTRAL or SERIOUS:
+     - Pick one:
+       - "${userName}, thoda sa smile kijiye please."
+       - "Camera ki taraf dekhiye."
+       - "Perfect. Bas thoda sa aur smile."
+       - "Aap bahut serious lag rahe hain!"
+       - "Chaliye, ek acchi si smile!"
+       - "Thoda relax ho jaiye, ${userName}."
+       - "Bilkul still rahiye..."
+       - "Hum scan kar rahe hain."
+       - "Aankhein camera par rakhiye."
+       - "Seedha dekhiye please."
+
+  --- IF SERVICE IS "medora" (Dental Scan) ---
+
+  1. If person is SMILING (showing teeth):
+     - Pick one:
+       - "Perfect! Aapke daant clear dikh rahe hain."
+       - "Bahut acche, ${userName}! Aise hi rakhiye."
+       - "Great! Hum scan kar rahe hain."
+       - "Aapki smile bahut healthy lag rahi hai."
+       - "Excellent! Thoda aur wide open kijiye."
+       - "Bilkul sahi! Perfect angle hai."
+       - "Aise hi smile karte rahiye."
+       - "Shandaar dental shot!"
+       - "Hum aapke daant scan kar rahe hain."
+       - "Bahut badiya, ${userName}!"
+
+  2. If person is NEUTRAL or mouth is closed:
+     - Pick one:
+       - "${userName}, please thoda smile kijiye."
+       - "Daant dikhane ke liye smile karein."
+       - "Thoda munh kholiye, please."
+       - "Camera mein dekh kar smile kijiye."
+       - "Aise nahi, ${userName}, thoda smile."
+       - "Humein aapke daant dekhne hain."
+       - "Thoda 'cheese' boliye!"
+       - "Aapki smile ka wait kar rahe hain."
+       - "Please show your teeth."
+       - "Camera par focus kijiye."
+  `;
   
-  const userPrompt = "Analyze this person's expression based on my instructions.";
+  const userPrompt = `Analyze this person's expression based on my instructions. Remember the user is ${userName} and the service is ${serviceType}.`;
   
   const requestBody = {
     systemInstruction: {
@@ -214,12 +286,10 @@ export async function analyzeLiveExpression(image: string): Promise<LiveExpressi
         ],
       },
     ],
-    // 🌟 FIX: 'generationConfig' is separate...
     generationConfig: {
       responseMimeType: "application/json",
-      temperature: 0.7,
+      temperature: 0.8, // Increased temperature for more variety
     },
-    // 🌟 ...and 'safetySettings' is at the same level.
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
