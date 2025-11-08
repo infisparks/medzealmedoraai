@@ -4,8 +4,8 @@ import { useRef, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import type { FormData } from "@/app/page"
-import { useSpeechSynthesis } from "react-speech-kit" // 🌟 NEW IMPORT
-import { analyzeLiveExpression } from "@/lib/gemini-api" // 🌟 NEW IMPORT
+import { useSpeechSynthesis } from "react-speech-kit"
+import { analyzeLiveExpression } from "@/lib/gemini-api"
 
 interface ImageCaptureProps {
   formData: FormData & { patientId: string }
@@ -19,7 +19,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // --- 🌟 NEW LIVE FEEDBACK STATE ---
+  // --- LIVE FEEDBACK STATE ---
   const [liveFeedbackText, setLiveFeedbackText] = useState<string>("")
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false)
   const { speak, speaking, voices } = useSpeechSynthesis()
@@ -53,7 +53,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     }
   }, [])
 
-  // --- 🌟 NEW EFFECT FOR LIVE ANALYSIS ---
+  // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
     if (isLoading || error || capturedPhotos.length === 3) {
       return // Don't run analysis if camera isn't ready or if capture is done
@@ -169,7 +169,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
             )}
             
-            {/* --- 🌟 NEW LIVE FEEDBACK OVERLAY 🌟 --- */}
+            {/* --- LIVE FEEDBACK OVERLAY --- */}
             {!isLoading && !error && !isAllCaptured && (
               <div className="absolute bottom-4 left-4 right-4 flex justify-center pointer-events-none">
                 <div
@@ -194,7 +194,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 </div>
               </div>
             )}
-            {/* --- END OF NEW OVERLAY --- */}
+            {/* --- END OF OVERLAY --- */}
 
           </div>
 
@@ -265,8 +265,3 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     </div>
   )
 }
-
-
-
-
-
