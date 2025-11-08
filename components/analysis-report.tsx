@@ -14,7 +14,7 @@ interface AnalysisReportProps {
   onBack: () => void
 }
 
-// FIX: Added 'skinClarityScore' to the interface to match your score logic
+// This interface includes the 'skinClarityScore' from my previous fix
 interface AnalysisResult {
   score?: number
   skinClarityScore?: number
@@ -41,10 +41,12 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         let result: AnalysisResult
         if (formData.serviceType === "medzeal") {
           result = await analyzeFacialImages(images)
-        } else {
-          // This is where the error for "medora" is happening.
-          // The analyzeDentalImages function itself is failing.
+        } else if (formData.serviceType === "medora") {
+          // This is the "medora" path
           result = await analyzeDentalImages(images)
+        } else {
+          // This case should not happen if form validation is correct
+          throw new Error("Invalid service type")
         }
 
         setAnalysisData(result)
@@ -60,14 +62,19 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
         console.log("[v0] Analysis completed and saved")
         setIsLoading(false)
       } catch (err) {
-        // This catch block is being triggered by analyzeDentalImages(images)
         console.error("[v0] Analysis error:", err)
         setError("Failed to analyze images. Please try again.")
         setIsLoading(false)
       }
     }
 
-    performAnalysis()
+    // We also check for serviceType here before running
+    if (formData.serviceType) {
+      performAnalysis()
+    } else {
+      setError("Service type is missing. Please go back and re-select.")
+      setIsLoading(false)
+    }
   }, [formData, images])
 
   const handleWhatsAppShare = () => {
@@ -111,18 +118,39 @@ export default function AnalysisReport({ formData, images, onBack }: AnalysisRep
     )
   }
 
-  if (!analysisData) {
-    return null
+  // **START OF FIX**
+  // This type guard proves to TypeScript that analysisData and
+  // formData.serviceType are not null for the rest of the component.
+  // This fixes the 'serviceType' error (Error 2).
+  if (!analysisData || !formData.serviceType) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md bg-card border border-border rounded-xl p-6">
+          <div className="text-center space-y-4">
+            <div className="text-4xl">🚫</div>
+            <h2 className="text-xl font-bold text-foreground">Report Data Missing</h2>
+            <p className="text-muted-foreground">Could not load report data. Please try again.</p>
+            <Button
+              onClick={onBack}
+              className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-lg"
+            >
+              Start Over
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
   }
+  // **END OF FIX**
 
-  // This logic is now correct because of the interface fix above
+  // From this point on, TypeScript knows formData.serviceType is "medzeal" or "medora", not null.
   const scoreKey = formData.serviceType === "medzeal" ? "skinClarityScore" : "oralHygieneScore"
   const score = analysisData[scoreKey as keyof AnalysisResult] || analysisData.score || 85
 
   const pdfReportData = {
     fullName: formData.fullName,
     phoneNumber: formData.phoneNumber,
-    serviceType: formData.serviceType,
+    serviceType: formData.serviceType, // This is now safe and correct
     score: typeof score === "number" ? score : 85,
     overallAssessment: analysisData.overallAssessment,
     keyProblemPoints: analysisData.keyProblemPoints,
