@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card"
 import type { FormData } from "@/app/page"
 import { useSpeechSynthesis } from "react-speech-kit"
 import { analyzeLiveExpression } from "@/lib/gemini-api"
+import { Sparkles } from "lucide-react" // Make sure to install lucide-react (npm install lucide-react)
 
 interface ImageCaptureProps {
   formData: FormData & { patientId: string }
@@ -18,6 +19,10 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 🌟 FIX 1: Add state to track if user has "started" the session
+  const [hasStarted, setHasStarted] = useState(false)
 
   // --- LIVE FEEDBACK STATE ---
   const [liveFeedbackText, setLiveFeedbackText] = useState<string>("")
@@ -27,7 +32,14 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   // Find a Hindi voice if available
   const hindiVoice = voices.find((v: any) => v.lang.startsWith("hi-"))
 
+  // Effect to start the camera
   useEffect(() => {
+    // Check for API key (good for debugging)
+    if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
+      console.error("FATAL: NEXT_PUBLIC_GEMINI_API_KEY is missing from .env.local");
+      setError("AI configuration is missing. Please contact support.");
+    }
+    
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -37,21 +49,17 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         const video = videoRef.current
         if (video) {
           video.srcObject = stream
-          
-          // 🌟 FIX: We must wait for the video metadata to load
-          // before we try to play it or set isLoading to false.
+          // Wait for metadata to load before playing
           video.onloadedmetadata = () => {
             video.play().catch(err => {
               console.error("Video play failed:", err)
               setError("Failed to play video. Please check permissions.")
             });
-            
-            // Now that the video is *actually* ready, we can stop loading.
-            setIsLoading(false)
+            setIsLoading(false) // Set loading to false only when video is ready
           }
         }
       } catch (err) {
-        console.error("Camera access error:", err) // Log the full error
+        console.error("Camera access error:", err)
         setError("Unable to access camera. Please check permissions.")
         setIsLoading(false)
       }
@@ -60,52 +68,45 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     startCamera()
 
     return () => {
+      // Cleanup: Stop video tracks on unmount
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
         tracks.forEach((track) => track.stop())
       }
     }
-  }, []) // Empty dependency array is correct here
+  }, []) // Empty dependency array ensures this runs once on mount
 
   // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
-    if (isLoading || error || capturedPhotos.length === 3) {
-      return // Don't run analysis if camera isn't ready or if capture is done
+    // 🌟 FIX 2: Do not run the loop if camera isn't ready OR if user hasn't clicked "Start"
+    if (isLoading || error || !hasStarted) {
+      return
     }
 
-    // This timer will capture a frame every 3 seconds for analysis
     const analysisInterval = setInterval(() => {
-      if (!isAnalyzingFrame && videoRef.current && canvasRef.current) {
+      if (!isAnalyzingFrame && !isSubmitting && videoRef.current && canvasRef.current) {
         
-        // 🌟 FIX: Check for valid video dimensions
         const videoWidth = videoRef.current.videoWidth
         const videoHeight = videoRef.current.videoHeight
         
         if (videoWidth === 0 || videoHeight === 0) {
           console.warn("Video frame is not ready, skipping analysis.")
-          return; // Don't try to analyze a 0x0 image
+          return; 
         }
         
         setIsAnalyzingFrame(true)
         
-        // Capture a frame (same logic as capturePhoto but smaller)
         const context = canvasRef.current.getContext("2d")
         if (context) {
-          // Set canvas to smaller size for faster processing
           canvasRef.current.width = 480
           canvasRef.current.height = (videoHeight * 480) / videoWidth
-          
           context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height)
-          
-          // Get low-quality JPEG for speed
           const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5) 
 
-          // Send for analysis in the background
           analyzeLiveExpression(photoData)
             .then(result => {
               if (result.expressionText && result.expressionText !== liveFeedbackText) {
                 setLiveFeedbackText(result.expressionText)
-                // Speak the text
                 speak({ 
                   text: result.expressionText, 
                   voice: hindiVoice || undefined 
@@ -114,7 +115,6 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             })
             .catch(err => {
               console.warn("Frame analysis failed:", err)
-              // Don't show an error, just fail silently
             })
             .finally(() => {
               setIsAnalyzingFrame(false)
@@ -127,12 +127,19 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
     return () => clearInterval(analysisInterval) // Cleanup on unmount
 
-  }, [isLoading, error, capturedPhotos.length, isAnalyzingFrame, speak, hindiVoice, liveFeedbackText])
+  }, [isLoading, error, hasStarted, isAnalyzingFrame, isSubmitting, speak, hindiVoice, liveFeedbackText]) // Added 'hasStarted'
 
+  // 🌟 FIX 3: Function to handle the "Start" click
+  const handleStartSession = () => {
+    setHasStarted(true)
+    // This "primes" the audio by speaking a silent space
+    // This gets the browser's permission to make sound
+    speak({ text: " ", voice: hindiVoice || undefined })
+    setLiveFeedbackText("Thoda smile kijiye!") // Give an initial instruction
+  }
 
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
-      // 🌟 FIX: Check for valid video dimensions before capture
       if (videoRef.current.videoWidth === 0) {
         console.error("Cannot capture photo, video not ready.");
         return;
@@ -140,16 +147,12 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
       
       const context = canvasRef.current.getContext("2d")
       if (context) {
-        // Set full resolution for saved photo
         canvasRef.current.width = videoRef.current.videoWidth
         canvasRef.current.height = videoRef.current.videoHeight
         context.drawImage(videoRef.current, 0, 0)
-        
-        // Get high-quality JPEG for analysis
         const photoData = canvasRef.current.toDataURL("image/jpeg", 0.9)
         setCapturedPhotos([...capturedPhotos, photoData])
 
-        // Flash animation
         const video = videoRef.current
         video.style.opacity = "0.3"
         setTimeout(() => {
@@ -157,6 +160,13 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         }, 200)
       }
     }
+  }
+
+  // Handle final submission
+  const handleSubmit = async () => {
+    setIsSubmitting(true)
+    await onCapture(capturedPhotos, formData.patientId)
+    setIsSubmitting(false)
   }
 
   const serviceLabel = formData.serviceType === "medzeal" ? "Medzeal Facial Scan" : "Medora Dental Scan"
@@ -192,12 +202,29 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               </div>
             )}
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            
             {!error && !isLoading && (
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
             )}
             
+            {/* 🌟 FIX 4: Show the "Start" button overlay */}
+            {!hasStarted && !isLoading && !error && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
+                <p className="text-lg font-medium text-white mb-6">Ready for your analysis?</p>
+                <Button 
+                  size="lg" 
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 px-6 rounded-full text-lg"
+                  onClick={handleStartSession}
+                >
+                  <Sparkles className="w-5 h-5 mr-2" />
+                  Start Live Assistant
+                </Button>
+              </div>
+            )}
+            
             {/* --- LIVE FEEDBACK OVERLAY --- */}
-            {!isLoading && !error && !isAllCaptured && (
+            {/* This will only appear *after* 'hasStarted' is true */}
+            {!isLoading && !error && hasStarted && (
               <div className="absolute bottom-4 left-4 right-4 flex justify-center pointer-events-none">
                 <div
                   className={`transition-all duration-300 bg-black/70 text-white px-4 py-2 rounded-full shadow-lg ${
@@ -221,8 +248,6 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 </div>
               </div>
             )}
-            {/* --- END OF OVERLAY --- */}
-
           </div>
 
           {/* Instructions */}
@@ -234,14 +259,15 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           </div>
 
           {/* Capture Button */}
-          {!isAllCaptured && (
+          {/* 🌟 FIX 5: Hide this button until the session has started */}
+          {!isAllCaptured && !isSubmitting && hasStarted && (
             <div className="flex justify-center">
               <button
                 onClick={capturePhoto}
                 disabled={isLoading || error !== null}
                 className="w-20 h-20 rounded-full bg-accent hover:bg-accent/90 flex items-center justify-center shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <svg className="w-10 h-10 text-accent-foreground" fill="currentColor" viewBox="0-0 24 24">
+                <svg className="w-10 h-10 text-accent-foreground" fill="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="8" />
                 </svg>
               </button>
@@ -264,7 +290,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 ) : (
                   <div className="text-center">
                     <p className="text-muted-foreground text-sm">Photo {index}/3</p>
-                  </div>
+Setting up...                  </div>
                 )}
               </div>
             ))}
@@ -278,10 +304,18 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           {/* Submit Button */}
           {isAllCaptured && (
             <Button
-              onClick={() => onCapture(capturedPhotos, formData.patientId)}
-              className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-lg transition-all"
+              onClick={handleSubmit}
+              disabled={isSubmitting} // Disable button when submitting
+              className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-lg transition-all disabled:opacity-70"
             >
-              Analyze My Images
+              {isSubmitting ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Analyzing in Progress...</span>
+                </div>
+              ) : (
+                "Analyze My Images"
+              )}
             </Button>
           )}
 
