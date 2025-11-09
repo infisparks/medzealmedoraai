@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import type { FormData } from "@/app/page"
 import { useSpeechSynthesis } from "react-speech-kit"
 import { analyzeLiveExpression } from "@/lib/gemini-api"
-import { Sparkles } from "lucide-react" // Make sure to install lucide-react (npm install lucide-react)
+import { Sparkles } from "lucide-react"
 
 interface ImageCaptureProps {
   formData: FormData & { patientId: string }
@@ -25,19 +25,19 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
   // --- LIVE FEEDBACK STATE ---
   const [liveFeedbackText, setLiveFeedbackText] = useState<string>("")
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false)
-  
+
   // State to track used dialogues
-  const [usedDialogues, setUsedDialogues] = useState<string[]>([]);
+  const [usedDialogues, setUsedDialogues] = useState<string[]>([])
 
   const { speak, speaking, voices } = useSpeechSynthesis()
-  
+
   const hindiVoice = voices.find((v: any) => v.lang.startsWith("hi-"))
 
   // Effect to start the camera
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
-      console.error("FATAL: NEXT_PUBLIC_GEMINI_API_KEY is missing from .env.local");
-      setError("AI configuration is missing. Please contact support.");
+      console.error("FATAL: NEXT_PUBLIC_GEMINI_API_KEY is missing from .env.local")
+      setError("AI configuration is missing. Please contact support.")
     }
 
     const startCamera = async () => {
@@ -45,15 +45,15 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user" },
         })
-        
+
         const video = videoRef.current
         if (video) {
           video.srcObject = stream
           video.onloadedmetadata = () => {
-            video.play().catch(err => {
+            video.play().catch((err) => {
               console.error("Video play failed:", err)
               setError("Failed to play video. Please check permissions.")
-            });
+            })
             setIsLoading(false)
           }
         }
@@ -72,7 +72,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
         tracks.forEach((track) => track.stop())
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voices]) // Run when voices array is populated
 
   // --- EFFECT FOR LIVE ANALYSIS ---
@@ -83,44 +83,42 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
     const analysisInterval = setInterval(() => {
       if (!isAnalyzingFrame && !isSubmitting && videoRef.current && canvasRef.current) {
-        
         const videoWidth = videoRef.current.videoWidth
         const videoHeight = videoRef.current.videoHeight
-        
+
         if (videoWidth === 0 || videoHeight === 0) {
           console.warn("Video frame is not ready, skipping analysis.")
-          return; 
+          return
         }
-        
+
         setIsAnalyzingFrame(true)
-        
+
         const context = canvasRef.current.getContext("2d")
         if (context) {
           canvasRef.current.width = 480
           canvasRef.current.height = (videoHeight * 480) / videoWidth
           context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height)
-          const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5) 
+          const photoData = canvasRef.current.toDataURL("image/jpeg", 0.5)
 
           // Pass the 'usedDialogues' list to the API
           analyzeLiveExpression(photoData, formData.fullName, formData.serviceType, usedDialogues)
-            .then(result => {
+            .then((result) => {
               // Check if the dialogue is empty or already used (as a fallback)
               if (result.expressionText && !usedDialogues.includes(result.expressionText)) {
-                
-                setLiveFeedbackText(result.expressionText);
-                setUsedDialogues(prev => [...prev, result.expressionText]); // Add to used list
+                setLiveFeedbackText(result.expressionText)
+                setUsedDialogues((prev) => [...prev, result.expressionText]) // Add to used list
 
-                speak({ 
-                  text: result.expressionText, 
+                speak({
+                  text: result.expressionText,
                   voice: hindiVoice || undefined,
                   rate: 0.9, // More natural rate
-                  pitch: 1.0 // More natural pitch
-                });
+                  pitch: 1.0, // More natural pitch
+                })
               } else if (result.expressionText) {
-                console.warn("AI repeated a dialogue, ignoring:", result.expressionText);
+                console.warn("AI repeated a dialogue, ignoring:", result.expressionText)
               }
             })
-            .catch(err => {
+            .catch((err) => {
               console.warn("Frame analysis failed:", err)
             })
             .finally(() => {
@@ -133,49 +131,40 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     }, 3000)
 
     return () => clearInterval(analysisInterval)
-
-  }, [
-    isLoading, 
-    error, 
-    hasStarted, 
-    isAnalyzingFrame, 
-    isSubmitting, 
-    speak, 
-    hindiVoice,
-    formData,
-    usedDialogues
-  ])
+  }, [isLoading, error, hasStarted, isAnalyzingFrame, isSubmitting, speak, hindiVoice, formData, usedDialogues])
 
   // Function to handle the "Start" click
   const handleStartSession = () => {
     setHasStarted(true)
-    
-    const introText = `Hi ${formData.fullName}! I'm InfiSpark, your AI assistant. Let's start your ${formData.serviceType === "medzeal" ? "facial" : "dental"} scan! Please look at the camera.`
-    
-    setLiveFeedbackText(introText);
-    setUsedDialogues([introText]); // Add intro text to the used list
 
-    speak({ 
-      text: introText, 
+    const introText = `Hi ${formData.fullName}! I'm InfiSpark, your AI assistant. Let's start your ${
+      formData.serviceType === "medzeal" ? "facial" : "dental"
+    } scan! Please look at the camera.`
+
+    setLiveFeedbackText(introText)
+    setUsedDialogues([introText]) // Add intro text to the used list
+
+    speak({
+      text: introText,
       voice: hindiVoice || undefined,
       rate: 0.9,
-      pitch: 1.0
-    });
+      pitch: 1.0,
+    })
   }
 
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       if (videoRef.current.videoWidth === 0) {
-        console.error("Cannot capture photo, video not ready.");
-        return;
+        console.error("Cannot capture photo, video not ready.")
+        return
       }
-      
+
       const context = canvasRef.current.getContext("2d")
       if (context) {
         canvasRef.current.width = videoRef.current.videoWidth
         canvasRef.current.height = videoRef.current.videoHeight
         context.drawImage(videoRef.current, 0, 0)
-        
+
         const photoData = canvasRef.current.toDataURL("image/jpeg", 0.9)
         setCapturedPhotos([...capturedPhotos, photoData])
 
@@ -231,13 +220,13 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             {!error && !isLoading && (
               <div className="absolute inset-0 border-4 border-accent/30 rounded-lg pointer-events-none" />
             )}
-            
+
             {/* "Start" button overlay */}
             {!hasStarted && !isLoading && !error && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
                 <p className="text-lg font-medium text-white mb-6">Ready for your analysis?</p>
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 px-6 rounded-full text-lg"
                   onClick={handleStartSession}
                 >
@@ -248,30 +237,43 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             )}
           </div>
 
-          {/* LIVE FEEDBACK AREA (Moved Below Camera) */}
-          <div className="h-16 flex items-center justify-center px-4">
-            {!isLoading && !error && hasStarted && (
-              <div
-                className={`transition-all duration-300 flex items-center justify-center gap-2.5 bg-background/50 text-foreground px-4 py-2 rounded-full ${
-                  liveFeedbackText ? "opacity-100" : "opacity-0"
-                } ${
-                  speaking && "opacity-100" // Stay visible while speaking
-                }`}
-              >
-                {/* Speaking Effect */}
-                {speaking && (
-                  <div className="flex gap-0.5 items-end h-5 w-5 flex-shrink-0">
-                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0s" }}></span>
-                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.2s" }}></span>
-                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.4s" }}></span>
-                    <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.6s" }}></span>
+          {/* Robot and Live Feedback Area (Combined and positioned for speech bubble effect) */}
+          {!isLoading && !error && hasStarted && (
+            <div className="relative flex items-end justify-center h-40">
+              {/* Robot Image with Animation */}
+              <img
+                src="/robot.png" // Path to your robot image in the public folder
+                alt="AI Assistant Robot"
+                className="h-32 w-auto animate-float absolute bottom-0 left-1/2 -translate-x-1/2" // Adjust size and position as needed
+              />
+
+              {/* Speech Bubble */}
+              {liveFeedbackText && (
+                <div
+                  className={`absolute bottom-20 right-1/2 translate-x-[calc(50%+60px)] z-20 transition-all duration-300 ${
+                    liveFeedbackText ? "opacity-100" : "opacity-0"
+                  } ${speaking && "opacity-100"}`} // Stay visible while speaking
+                >
+                  <div className="relative bg-accent text-accent-foreground px-4 py-2 rounded-xl shadow-md max-w-[200px] text-sm text-center">
+                    {liveFeedbackText}
+                    {/* Speech bubble tail */}
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-accent translate-y-[10px]"></div>
                   </div>
-                )}
-                <span className="text-sm font-medium text-center">{liveFeedbackText}</span>
-              </div>
-            )}
-          </div>
-          {/* --- END OF LIVE FEEDBACK AREA --- */}
+                </div>
+              )}
+
+              {/* Speaking Effect (Optional, if you still want it outside the bubble or separate) */}
+              {speaking && (
+                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-0.5 items-end h-5 w-10 flex-shrink-0">
+                  <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0s" }}></span>
+                  <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.2s" }}></span>
+                  <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.4s" }}></span>
+                  <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0.6s" }}></span>
+                </div>
+              )}
+            </div>
+          )}
+          {/* --- END OF ROBOT AND LIVE FEEDBACK AREA --- */}
 
           {/* Instructions */}
           <div className="text-center">

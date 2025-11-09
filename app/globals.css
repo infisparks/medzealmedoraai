@@ -144,3 +144,60 @@
   height: 0.25rem; /* 4px */
   animation: speak-bar 1.2s infinite ease-in-out;
 }
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom keyframes for the robot float animation */
+@keyframes float {
+  0% {
+    transform: translate(-50%, 0px);
+  }
+  50% {
+    transform: translate(-50%, -10px); /* Moves up 10px */
+  }
+  100% {
+    transform: translate(-50%, 0px);
+  }
+}
+
+/* Apply the animation */
+.animate-float {
+  animation: float 3s ease-in-out infinite; /* Adjust duration as needed */
+}
+
+/* Other existing animations if any */
+.animate-speak-bar {
+  animation: speak-bar 0.6s ease-in-out infinite;
+  height: 10px; /* Base height */
+}
+
+.animate-speak-bar:nth-child(1) {
+  animation-delay: 0s;
+  height: 5px; /* Starting height */
+}
+.animate-speak-bar:nth-child(2) {
+  animation-delay: 0.2s;
+  height: 10px;
+}
+.animate-speak-bar:nth-child(3) {
+  animation-delay: 0.4s;
+  height: 15px;
+}
+.animate-speak-bar:nth-child(4) {
+  animation-delay: 0.6s;
+  height: 10px;
+}
+
+@keyframes speak-bar {
+  0%,
+  100% {
+    height: 5px;
+  }
+  50% {
+    height: 15px;
+  }
+}
+
+/* Add any other global styles you have */
