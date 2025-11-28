@@ -343,6 +343,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             </Button>
           )}
 
+
           {/* Hidden Canvas for capturing */}
           <canvas ref={canvasRef} className="hidden" />
         </div>
