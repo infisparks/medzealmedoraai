@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import IntakeForm from "@/components/intake-form"
-import ImageCapture from "@/components/image-capture"
+// FIX: Remove the curly braces { } around ImageCapture
+import ImageCapture from "@/components/image-capture" 
 import AnalysisReport from "@/components/analysis-report"
 
 export interface FormData {
