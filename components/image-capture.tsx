@@ -185,6 +185,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             ))}
           </div>
 
+
           {/* Submit Button */}
           {isAllCaptured && (
             <Button
