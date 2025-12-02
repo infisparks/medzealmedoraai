@@ -13,6 +13,30 @@ interface ImageCaptureProps {
   onCapture: (images: string[], patientId: string) => void
 }
 
+// List of 20 Complimentary/Fun Hindi Dialogues
+const STARTUP_DIALOGUES = [
+  "Waah! Kya chehra hai!",
+  "Aapki smile toh bohot pyaari hai.",
+  
+  "Arre waah! Aaj toh aap chamak rahe hain.",
+  "Aapki aankhon mein alag hi chamak hai.",
+  "Mashallah! Bahut khoobsurat.",
+  "Chehre par kya noor hai aaj!",
+  "Aapko dekh kar dil khush ho gaya.",
+  "Bilkul film star lag rahe hain aap.",
+  "Uff! Yeh ada, maar hi daalogi.",
+  "Aapki hasi toh lajawab hai.",
+  "Kamaal lag rahe hain aap aaj.",
+  "Ek dum jhakaas!",
+  "Aapki sadgi mein hi asli khubsurti hai.",
+  "Subhanallah! Kya baat hai.",
+  "Arre bas kijiye, camera bhi sharma jayega.",
+  "Photo toh zabardast aane wali hai aaj.",
+  "Chehre ki chamak toh dekho zara.",
+  "Aapka andaaz sabse alag hai.",
+  "Oho! Itni freshness?",
+]
+
 export default function ImageCapture({ formData, onCapture }: ImageCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -31,7 +55,8 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
 
   const { speak, speaking, voices } = useSpeechSynthesis()
 
-  const hindiVoice = voices.find((v: any) => v.lang.startsWith("hi-"))
+  // Try to find Google Hindi, or fallback to any Hindi, or fallback to first voice
+  const hindiVoice = voices.find((v: any) => v.lang.includes("hi") || v.lang.includes("HI")) || voices[0]
 
   // Effect to start the camera
   useEffect(() => {
@@ -73,7 +98,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voices]) // Run when voices array is populated
+  }, [voices]) 
 
   // --- EFFECT FOR LIVE ANALYSIS ---
   useEffect(() => {
@@ -82,12 +107,12 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
     }
 
     const analysisInterval = setInterval(() => {
+      // Ensure we don't interrupt if the startup dialogue is just about to be spoken (basic check)
       if (!isAnalyzingFrame && !isSubmitting && videoRef.current && canvasRef.current) {
         const videoWidth = videoRef.current.videoWidth
         const videoHeight = videoRef.current.videoHeight
 
         if (videoWidth === 0 || videoHeight === 0) {
-          console.warn("Video frame is not ready, skipping analysis.")
           return
         }
 
@@ -103,20 +128,18 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           // Pass the 'usedDialogues' list to the API
           analyzeLiveExpression(photoData, formData.fullName, formData.serviceType, usedDialogues)
             .then((result) => {
-              // Check if the dialogue is empty or already used (as a fallback)
-              if (result.expressionText && !usedDialogues.includes(result.expressionText)) {
+              // Only speak if not currently speaking to avoid overlapping the random startup dialogue
+              if (result.expressionText && !usedDialogues.includes(result.expressionText) && !speaking) {
                 setLiveFeedbackText(result.expressionText)
-                setUsedDialogues((prev) => [...prev, result.expressionText]) // Add to used list
+                setUsedDialogues((prev) => [...prev, result.expressionText]) 
 
                 speak({
                   text: result.expressionText,
                   voice: hindiVoice || undefined,
-                  rate: 0.9, // More natural rate
-                  pitch: 1.0, // More natural pitch
+                  rate: 0.9, 
+                  pitch: 1.0, 
                 })
-              } else if (result.expressionText) {
-                console.warn("AI repeated a dialogue, ignoring:", result.expressionText)
-              }
+              } 
             })
             .catch((err) => {
               console.warn("Frame analysis failed:", err)
@@ -128,28 +151,33 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
           setIsAnalyzingFrame(false)
         }
       }
-    }, 3000)
+    }, 4000) // Increased interval slightly so the random startup dialogue has time to finish
 
     return () => clearInterval(analysisInterval)
-  }, [isLoading, error, hasStarted, isAnalyzingFrame, isSubmitting, speak, hindiVoice, formData, usedDialogues])
+  }, [isLoading, error, hasStarted, isAnalyzingFrame, isSubmitting, speak, hindiVoice, formData, usedDialogues, speaking])
 
   // Function to handle the "Start" click
   const handleStartSession = () => {
     setHasStarted(true)
+    
+    // 1. Wait 3-4 seconds (3500ms)
+    setTimeout(() => {
+      // 2. Pick 1 random dialogue
+      const randomIndex = Math.floor(Math.random() * STARTUP_DIALOGUES.length);
+      const randomDialogue = STARTUP_DIALOGUES[randomIndex];
 
-    const introText = `Hi ${formData.fullName}! I'm InfiSpark, your AI assistant. Let's start your ${
-      formData.serviceType === "medzeal" ? "facial" : "dental"
-    } scan! Please look at the camera.`
+      // 3. Update UI
+      setLiveFeedbackText(randomDialogue);
+      setUsedDialogues((prev) => [...prev, randomDialogue]); 
 
-    setLiveFeedbackText(introText)
-    setUsedDialogues([introText]) // Add intro text to the used list
-
-    speak({
-      text: introText,
-      voice: hindiVoice || undefined,
-      rate: 0.9,
-      pitch: 1.0,
-    })
+      // 4. Speak using TTS
+      speak({
+        text: randomDialogue,
+        voice: hindiVoice || undefined,
+        rate: 0.9,
+        pitch: 1.0,
+      })
+    }, 3500); 
   }
 
   const capturePhoto = () => {
@@ -237,14 +265,14 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
             )}
           </div>
 
-          {/* Robot and Live Feedback Area (Combined and positioned for speech bubble effect) */}
+          {/* Robot and Live Feedback Area */}
           {!isLoading && !error && hasStarted && (
             <div className="relative flex items-end justify-center h-40">
               {/* Robot Image with Animation */}
               <img
-                src="/robot.png" // Path to your robot image in the public folder
+                src="/robot.png" 
                 alt="AI Assistant Robot"
-                className="h-32 w-auto animate-float absolute bottom-0 left-1/2 -translate-x-1/2" // Adjust size and position as needed
+                className="h-32 w-auto animate-float absolute bottom-0 left-1/2 -translate-x-1/2" 
               />
 
               {/* Speech Bubble */}
@@ -262,7 +290,7 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
                 </div>
               )}
 
-              {/* Speaking Effect (Optional, if you still want it outside the bubble or separate) */}
+              {/* Speaking Effect */}
               {speaking && (
                 <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-0.5 items-end h-5 w-10 flex-shrink-0">
                   <span className="w-1 bg-accent animate-speak-bar" style={{ animationDelay: "0s" }}></span>
@@ -273,7 +301,6 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               )}
             </div>
           )}
-          {/* --- END OF ROBOT AND LIVE FEEDBACK AREA --- */}
 
           {/* Instructions */}
           <div className="text-center">
@@ -342,7 +369,6 @@ export default function ImageCapture({ formData, onCapture }: ImageCaptureProps)
               )}
             </Button>
           )}
-
 
           {/* Hidden Canvas for capturing */}
           <canvas ref={canvasRef} className="hidden" />
