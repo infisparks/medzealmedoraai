@@ -35,7 +35,7 @@ export async function sendPDFViaWhatsApp(data: WhatsAppPDFShareRequest): Promise
   };
 
   try {
-    const res = await fetch("https://evo.infispark.in/message/sendMedia/medfordlab", {
+    const res = await fetch("https://evo.infispark.in/message/sendMedia/mudassir", {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
